@@ -1,6 +1,7 @@
 #include <complex>
 #include <vector>
 #include <cmath>
+#include <cassert>
 
 
 #define M_PI 3.14159265358979
@@ -42,6 +43,9 @@ std::vector<std::complex<double>> generate_koch_curve(int iterations) {
  
 
 float sierpinski_carpet(double x, double y, int iterations) {
+
+    assert(iterations >= 0 && iterations <= 100000); // Sanity check 
+
     x = (x - 0.0) / (1.0 - 0.0);
     y = (y - 0.0) / (1.0 - 0.0);
     if (x < 0 || x > 1 || y < 0 || y > 1) return 0.0f;
@@ -56,6 +60,9 @@ float sierpinski_carpet(double x, double y, int iterations) {
 }
 
 float cantor_dust(double x, double y, int iterations) {
+
+    assert(iterations >= 0 && iterations <= 100000); // Sanity check 
+
     x = (x - 0.0) / (1.0 - 0.0);
     y = (y - 0.0) / (1.0 - 0.0);
     if (x < 0 || x > 1 || y < 0 || y > 1) return 0.0f;
@@ -69,6 +76,7 @@ float cantor_dust(double x, double y, int iterations) {
     }
     return value;
 }
+
 
 std::vector<std::complex<double>> generate_dragon_curve(int iterations) {
     std::vector<std::complex<double>> points = { {0.0, 0.0}, {1.0, 0.0} };
@@ -735,5 +743,199 @@ float cantor_cloud(double x, double y, int iterations) {
     }
     return value;
 }
+
+
+
+float koch_curve(double x, double y, int iterations) {
+    auto points = generate_koch_curve(iterations);
+    // Simple point-in-curve check (this is a simplified approach)
+    for (size_t i = 0; i < points.size() - 1; ++i) {
+        if (x >= points[i].real() && x <= points[i + 1].real() &&
+            y >= points[i].imag() && y <= points[i + 1].imag()) {
+            return 1.0f;
+        }
+    }
+    return 0.0f;
+}
+
+float dragon_curve(double x, double y, int iterations) {
+    auto points = generate_dragon_curve(iterations);
+    for (size_t i = 0; i < points.size() - 1; ++i) {
+        if (x >= points[i].real() && x <= points[i + 1].real() &&
+            y >= points[i].imag() && y <= points[i + 1].imag()) {
+            return 1.0f;
+        }
+    }
+    return 0.0f;
+}
+
+float levy_curve(double x, double y, int iterations) {
+    auto points = generate_levy_curve(iterations);
+    for (size_t i = 0; i < points.size() - 1; ++i) {
+        if (x >= points[i].real() && x <= points[i + 1].real() &&
+            y >= points[i].imag() && y <= points[i + 1].imag()) {
+            return 1.0f;
+        }
+    }
+    return 0.0f;
+}
+
+float gosper_curve(double x, double y, int iterations) {
+    auto points = generate_gosper_curve(iterations);
+    for (size_t i = 0; i < points.size() - 1; ++i) {
+        if (x >= points[i].real() && x <= points[i + 1].real() &&
+            y >= points[i].imag() && y <= points[i + 1].imag()) {
+            return 1.0f;
+        }
+    }
+    return 0.0f;
+}
+
+float cesaro_curve(double x, double y, int iterations) {
+    auto points = generate_cesaro_curve(iterations);
+    for (size_t i = 0; i < points.size() - 1; ++i) {
+        if (x >= points[i].real() && x <= points[i + 1].real() &&
+            y >= points[i].imag() && y <= points[i + 1].imag()) {
+            return 1.0f;
+        }
+    }
+    return 0.0f;
+}
+
+float koch_snowflake(double x, double y, int iterations) {
+    auto points = generate_koch_snowflake(iterations);
+    for (size_t i = 0; i < points.size() - 1; ++i) {
+        if (x >= points[i].real() && x <= points[i + 1].real() &&
+            y >= points[i].imag() && y <= points[i + 1].imag()) {
+            return 1.0f;
+        }
+    }
+    return 0.0f;
+}
+
+float sierpinski_arrowhead(double x, double y, int iterations) {
+    auto points = generate_sierpinski_arrowhead(iterations);
+    for (size_t i = 0; i < points.size() - 1; ++i) {
+        if (x >= points[i].real() && x <= points[i + 1].real() &&
+            y >= points[i].imag() && y <= points[i + 1].imag()) {
+            return 1.0f;
+        }
+    }
+    return 0.0f;
+}
+
+float quadric_koch(double x, double y, int iterations) {
+    auto points = generate_quadric_koch(iterations);
+    for (size_t i = 0; i < points.size() - 1; ++i) {
+        if (x >= points[i].real() && x <= points[i + 1].real() &&
+            y >= points[i].imag() && y <= points[i + 1].imag()) {
+            return 1.0f;
+        }
+    }
+    return 0.0f;
+}
+
+float minkowski_sausage(double x, double y, int iterations) {
+    auto points = generate_minkowski_sausage(iterations);
+    for (size_t i = 0; i < points.size() - 1; ++i) {
+        if (x >= points[i].real() && x <= points[i + 1].real() &&
+            y >= points[i].imag() && y <= points[i + 1].imag()) {
+            return 1.0f;
+        }
+    }
+    return 0.0f;
+}
+
+float koch_anti_snowflake(double x, double y, int iterations) {
+    auto points = generate_koch_anti_snowflake(iterations);
+    for (size_t i = 0; i < points.size() - 1; ++i) {
+        if (x >= points[i].real() && x <= points[i + 1].real() &&
+            y >= points[i].imag() && y <= points[i + 1].imag()) {
+            return 1.0f;
+        }
+    }
+    return 0.0f;
+}
+
+float terdragon_curve(double x, double y, int iterations) {
+    auto points = generate_terdragon_curve(iterations);
+    for (size_t i = 0; i < points.size() - 1; ++i) {
+        if (x >= points[i].real() && x <= points[i + 1].real() &&
+            y >= points[i].imag() && y <= points[i + 1].imag()) {
+            return 1.0f;
+        }
+    }
+    return 0.0f;
+}
+
+float koch_island(double x, double y, int iterations) {
+    auto points = generate_koch_island(iterations);
+    for (size_t i = 0; i < points.size() - 1; ++i) {
+        if (x >= points[i].real() && x <= points[i + 1].real() &&
+            y >= points[i].imag() && y <= points[i + 1].imag()) {
+            return 1.0f;
+        }
+    }
+    return 0.0f;
+}
+
+float heighway_dragon_variant(double x, double y, int iterations) {
+    auto points = generate_heighway_dragon_variant(iterations);
+    for (size_t i = 0; i < points.size() - 1; ++i) {
+        if (x >= points[i].real() && x <= points[i + 1].real() &&
+            y >= points[i].imag() && y <= points[i + 1].imag()) {
+            return 1.0f;
+        }
+    }
+    return 0.0f;
+}
+
+float snowflake_sweep(double x, double y, int iterations) {
+    auto points = generate_snowflake_sweep(iterations);
+    for (size_t i = 0; i < points.size() - 1; ++i) {
+        if (x >= points[i].real() && x <= points[i + 1].real() &&
+            y >= points[i].imag() && y <= points[i + 1].imag()) {
+            return 1.0f;
+        }
+    }
+    return 0.0f;
+}
+
+float dekking_curve(double x, double y, int iterations) {
+    auto points = generate_dekking_curve(iterations);
+    for (size_t i = 0; i < points.size() - 1; ++i) {
+        if (x >= points[i].real() && x <= points[i + 1].real() &&
+            y >= points[i].imag() && y <= points[i + 1].imag()) {
+            return 1.0f;
+        }
+    }
+    return 0.0f;
+}
+
+float gosper_island(double x, double y, int iterations) {
+    auto points = generate_gosper_island(iterations);
+    for (size_t i = 0; i < points.size() - 1; ++i) {
+        if (x >= points[i].real() && x <= points[i + 1].real() &&
+            y >= points[i].imag() && y <= points[i + 1].imag()) {
+            return 1.0f;
+        }
+    }
+    return 0.0f;
+}
+
+float koch_quadratic(double x, double y, int iterations) {
+    auto points = generate_koch_quadratic(iterations);
+    for (size_t i = 0; i < points.size() - 1; ++i) {
+        if (x >= points[i].real() && x <= points[i + 1].real() &&
+            y >= points[i].imag() && y <= points[i + 1].imag()) {
+            return 1.0f;
+        }
+    }
+    return 0.0f;
+}
+
+
+
+
 
  

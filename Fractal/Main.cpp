@@ -1,49 +1,3 @@
-/*
-// --- CORE OPENGL LIBRARIES ---
-#include <glad/glad.h>   // MUST BE FIRST! This defines all gl* functions.
-#include <GLFW/glfw3.h>  // Second, as it uses GLAD's definitions for context creation.
-
-// --- OTHER LIBRARIES ---
-#include <glm/glm.hpp>   // Your math library
-#include <iostream>      // Standard C++
-#include <vector>
-#include <thread>
-#include <mutex>
-
-// THESE ARE THE PROBLEM CHILD HEADERS
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
-
-#include "math.h"
-
-#define WINDOW_WIDTH 800
-#define WINDOW_HEIGHT 600
-#define THREAD_COUNT 4
-*/
-
-/*
-// --- CORE OPENGL LIBRARIES ---
-#include <glad/glad.h>   // MUST BE FIRST! This defines all gl* functions.
-#include <GLFW/glfw3.h>  // Second, as it uses GLAD's definitions for context creation.
-
-// --- OTHER LIBRARIES ---
-#include <glm/glm.hpp>   // Your math library
-#include <iostream>      // Standard C++
-#include <vector>
-#include <thread>
-#include <mutex>
-
-// THESE ARE THE PROBLEM CHILD HEADERS
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
-
-#include "math.h"
-
-#define WINDOW_WIDTH 800
-#define WINDOW_HEIGHT 600
-#define THREAD_COUNT 4
-*/
-
 #include <glad/glad.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
@@ -55,9 +9,29 @@
 #include "math.h"
 #include <fstream>
 
-#define WINDOW_WIDTH 1920
-#define WINDOW_HEIGHT 1080
+#include <complex>
+ 
+#include <cmath>
+#include <cstdlib> // For rand()
+#include <limits>  // For numeric_limits
+ 
+#include <algorithm> // For std::min and std::max
+
+// Custom clamp function for C++14 or earlier
+template <typename T>
+constexpr const T& clamp(const T& v, const T& lo, const T& hi) {
+	return std::min(std::max(v, lo), hi);
+}
+
+
+#define M_PI 3.14159265358979
+
+#define WINDOW_WIDTH 900
+#define WINDOW_HEIGHT 780
 #define THREAD_COUNT 4
+
+
+
 
 enum FractalType {
 	MANDELBROT, KOCH, SIERPINSKI_CARPET, CANTOR, DRAGON, PEANO, HILBERT,
@@ -75,7 +49,11 @@ struct Viewport {
 	double zoom = 1.0;
 };
 
+
 std::vector<std::vector<float>> pixel_data(WINDOW_HEIGHT, std::vector<float>(WINDOW_WIDTH, 0.0f));
+// std::vector<float> pixel_data(WINDOW_WIDTH* WINDOW_HEIGHT, 0.0f);
+ 
+
 FractalType current_fractal = MANDELBROT;
 std::mutex mtx;
 
@@ -88,9 +66,13 @@ void check_gl_error(const char* stage) {
 	}
 }
 
+ 
 void compute_fractal(Viewport& view, FractalType type) {
 	std::vector<std::thread> threads;
 	int rows_per_thread = WINDOW_HEIGHT / THREAD_COUNT;
+
+
+	 
 
 	for (int t = 0; t < THREAD_COUNT; ++t) {
 		threads.emplace_back([&, t]() {
@@ -102,9 +84,13 @@ void compute_fractal(Viewport& view, FractalType type) {
 					double real = view.x_min + (view.x_max - view.x_min) * x / WINDOW_WIDTH;
 					double imag = view.y_min + (view.y_max - view.y_min) * y / WINDOW_HEIGHT;
 					float value = 0.0f;
-					int iterations = 4;
+					int iterations = 6;
 
 					switch (type) {
+
+						 
+		 
+
 					case SIERPINSKI_CARPET: value = sierpinski_carpet(real, imag, iterations); break;
 					case CANTOR: value = cantor_dust(real, imag, iterations); break;
 					case PEANO: value = peano_curve(real, imag, iterations); break;
@@ -123,8 +109,16 @@ void compute_fractal(Viewport& view, FractalType type) {
 					case CANTOR_CLOUD: value = cantor_cloud(real, imag, iterations); break;
 					case MOORE: value = moore_curve(real, imag, iterations); break;
 					case SIERPINSKI_SQUARE: value = sierpinski_square(real, imag, iterations); break;
-					default: value = 0.0f; break;
+
+ 
+ 		 
+
+					default: value = 0.1f; break;
 					}
+
+
+					value = clamp(value, 0.0f, 1.0f);
+
 
 					// Debug: Log if value is out of range
 					if (value < 0.0f || value > 1.0f) {
@@ -133,19 +127,26 @@ void compute_fractal(Viewport& view, FractalType type) {
 					}
 
 					std::lock_guard<std::mutex> lock(mtx);
-					pixel_data[y][x] = value;
+					if (y >= 0 && y < WINDOW_HEIGHT && x >= 0 && x < WINDOW_WIDTH) {
+						pixel_data[y][x] = value;
+					}
+
 				}
 			}
 			});
-	}
+	} 
+
 
 	for (auto& thread : threads) {
 		thread.join();
 	}
 
+	glGenTextures(1, &texture);
 	glBindTexture(GL_TEXTURE_2D, texture);
-	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, GL_RED, GL_FLOAT, pixel_data[0].data());
-	check_gl_error("texture upload");
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, WINDOW_WIDTH, WINDOW_HEIGHT, 0, GL_RED, GL_FLOAT, nullptr);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	check_gl_error("texture setup");
 }
 
 GLuint compile_shader(const char* source, GLenum type) {
@@ -184,7 +185,9 @@ GLuint create_shader_program(const char* vertex_source, const char* fragment_sou
 
 void render_line_fractal(GLuint shader_program, Viewport& view, FractalType type, GLuint vao, GLuint vbo) {
 	std::vector<std::complex<double>> points;
-	int iterations = 4; // Adjustable iterations
+	int iterations = 6; // Adjustable iterations
+
+
 
 	switch (type) {
 	case KOCH: points = generate_koch_curve(iterations); break;
@@ -204,10 +207,16 @@ void render_line_fractal(GLuint shader_program, Viewport& view, FractalType type
 	case GOSPER_ISLAND: points = generate_gosper_island(iterations); break;
 	case KOCH_QUADRATIC: points = generate_koch_quadratic(iterations); break;
 	case KOCH_ANTI_SNOWFLAKE: points = generate_koch_anti_snowflake(iterations); break;
+
+	 
 	default:
 		std::cerr << "Unsupported fractal type for line rendering: " << type << std::endl;
 		return;
 	}
+
+
+	 
+
 
 	std::vector<float> vertices;
 	for (const auto& p : points) {
@@ -300,6 +309,14 @@ int main(int argc, char* argv[]) {
 		return 1;
 	}
 
+
+	glGenTextures(1, &texture);
+	glBindTexture(GL_TEXTURE_2D, texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, WINDOW_WIDTH, WINDOW_HEIGHT, 0, GL_RED, GL_FLOAT, nullptr);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	check_gl_error("texture setup");
+
 	std::cout << "OpenGL Version: " << glGetString(GL_VERSION) << std::endl;
 	std::cout << "OpenGL Vendor: " << glGetString(GL_VENDOR) << std::endl;
 
@@ -363,13 +380,8 @@ int main(int argc, char* argv[]) {
 	glEnableVertexAttribArray(0);
 	check_gl_error("quad setup");
 
-	GLuint texture;
-	glGenTextures(1, &texture);
-	glBindTexture(GL_TEXTURE_2D, texture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, WINDOW_WIDTH, WINDOW_HEIGHT, 0, GL_RED, GL_FLOAT, nullptr);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	check_gl_error("texture setup");
+ 
+	
 
 	GLuint line_vao, line_vbo;
 	glGenVertexArrays(1, &line_vao);
@@ -397,8 +409,8 @@ int main(int argc, char* argv[]) {
 
 				case SDLK_1: current_fractal = MANDELBROT; view = { -2.0, 1.0, -1.5, 1.5, 1.0 }; break;
 				case SDLK_2: current_fractal = KOCH; view = { 0.0, 1.0, -0.5, 0.5, 1.0 }; break;
-				case SDLK_3: current_fractal = SIERPINSKI_CARPET; view = { 0.0, 1.0, 0.0, 1.0, 1.0 }; break;
-				case SDLK_4: current_fractal = CANTOR; view = { 0.0, 1.0, 0.0, 1.0, 1.0 }; break;
+				case SDLK_3: current_fractal = SIERPINSKI_CARPET; view = { 0.0, 0.6, 0.0, 0.5, 0.5 }; break;
+				case SDLK_4: current_fractal = CANTOR; view = { 0.0, 0.1, 0.0, 0.1, 0.1 }; break;
 				case SDLK_5: current_fractal = DRAGON; view = { -1.0, 1.0, -1.0, 1.0, 1.0 }; break;
 				case SDLK_6: current_fractal = PEANO; view = { 0.0, 1.0, 0.0, 1.0, 1.0 }; break;
 				case SDLK_7: current_fractal = HILBERT; view = { 0.0, 1.0, 0.0, 1.0, 1.0 }; break;
@@ -467,7 +479,15 @@ int main(int argc, char* argv[]) {
 						std::vector<unsigned char> data(WINDOW_WIDTH * WINDOW_HEIGHT * 3);
 						file.read((char*)data.data(), data.size());
 						file.close();
+
+						 
+						
+						std::vector<float> dummy(WINDOW_WIDTH * WINDOW_HEIGHT, 0.5f);
+						glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, GL_RED, GL_FLOAT, dummy.data());
+
+
 						glBindTexture(GL_TEXTURE_2D, texture);
+						//glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, WINDOW_WIDTH, WINDOW_HEIGHT, 0, GL_RED, GL_FLOAT, nullptr);
 						glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, GL_RGB, GL_UNSIGNED_BYTE, data.data());
 						std::cout << "Loaded from fractal.ppm" << std::endl;
 					}
@@ -577,6 +597,7 @@ int main(int argc, char* argv[]) {
 				current_fractal == CANTOR_SQUARE || current_fractal == HILBERT_VARIANT ||
 				current_fractal == SIERPINSKI_PENTAGON || current_fractal == CANTOR_CLOUD ||
 				current_fractal == MOORE || current_fractal == SIERPINSKI_SQUARE;
+ 
 
 			if (is_pixel_fractal) {
 				compute_fractal(view, current_fractal);
@@ -620,158 +641,6 @@ int main(int argc, char* argv[]) {
 
 
 
-/// /////////////////////////////////////
+ ////////////////////////////////////
 
 
-// Vertex Shader Source
-const char* vertexShaderSource = R"(
-    #version 330 core
-    layout (location = 0) in vec3 aPos;
-    void main() {
-        gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);
-    }
-)";
-
-// Fragment Shader Source (simple red color)
-const char* fragmentShaderSource = R"(
-    #version 330 core
-    out vec4 FragColor;
-    void main() {
-        FragColor = vec4(1.0f, 0.0f, 0.0f, 1.0f); // Solid Red
-    }
-)";
-
-
-int main1(int argc, char* argv[]) {
-
-
-	srand(time(nullptr));
-
-
-    // 1. Initialize SDL Video Subsystem
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-        std::cerr << "SDL could not initialize! SDL_Error: " << SDL_GetError() << std::endl;
-        return 1;
-    }
-
-    // 2. Set OpenGL Context Attributes (requesting OpenGL 3.3 Core Profile)
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24); // Optional: Depth buffer
-
-    // 3. Create an SDL Window with OpenGL flag
-    SDL_Window* window = SDL_CreateWindow(
-        "Minimal SDL2 + GLAD OpenGL Test", // Window title
-        SDL_WINDOWPOS_UNDEFINED,           // Initial x position
-        SDL_WINDOWPOS_UNDEFINED,           // Initial y position
-        WINDOW_WIDTH,                      // Width in pixels
-        WINDOW_HEIGHT,                     // Height in pixels
-        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN // Flags: Enable OpenGL, make window visible
-    );
-
-    if (window == nullptr) {
-        std::cerr << "Window could not be created! SDL_Error: " << SDL_GetError() << std::endl;
-        SDL_Quit();
-        return 1;
-    }
-
-    // 4. Create an OpenGL Context and make it current
-    SDL_GLContext gl_context = SDL_GL_CreateContext(window);
-    if (gl_context == nullptr) {
-        std::cerr << "OpenGL context could not be created! SDL_Error: " << SDL_GetError() << std::endl;
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return 1;
-    }
-
-    SDL_GL_MakeCurrent(window, gl_context);
-
-    // 5. Initialize GLAD - THIS IS THE CRUCIAL STEP FOR MODERN OPENGL FUNCTIONS!
-    // GLAD uses SDL_GL_GetProcAddress to load the function pointers from the driver.
-    if (!gladLoadGLLoader(SDL_GL_GetProcAddress)) {
-        std::cerr << "Failed to initialize GLAD" << std::endl;
-        SDL_GL_DeleteContext(gl_context);
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return 1;
-    }
-
-    // Print OpenGL version (now it should show your actual version)
-    std::cout << "OpenGL Version: " << glGetString(GL_VERSION) << std::endl;
-    std::cout << "GLSL Version: " << glGetString(GL_SHADING_LANGUAGE_VERSION) << std::endl;
-
-    // 6. NOW you can use modern OpenGL functions like glCreateShader, glGenVertexArrays, etc.
-
-    // Compile and link shaders (minimal example)
-    GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
-    glCompileShader(vertexShader);
-
-    GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
-    glCompileShader(fragmentShader);
-
-    GLuint shaderProgram = glCreateProgram();
-    glAttachShader(shaderProgram, vertexShader);
-    glAttachShader(shaderProgram, fragmentShader);
-    glLinkProgram(shaderProgram);
-
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
-
-    // Set up a basic VAO and VBO for a simple triangle (modern way)
-    float vertices[] = {
-        -0.5f, -0.5f, 0.0f, // left
-         0.5f, -0.5f, 0.0f, // right
-         0.0f,  0.5f, 0.0f  // top
-    };
-    GLuint VBO, VAO;
-    glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBO);
-    glBindVertexArray(VAO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0); // Unbind VBO
-    glBindVertexArray(0); // Unbind VAO
-
-    // 7. Main loop
-    bool quit = false;
-    SDL_Event e;
-
-    while (!quit) {
-        while (SDL_PollEvent(&e) != 0) {
-            if (e.type == SDL_QUIT) {
-                quit = true;
-            }
-        }
-
-        // 8. OpenGL Rendering commands (using modern pipeline)
-        glClearColor(0.1f, 0.1f, 0.1f, 1.0f); // Dark background
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        glUseProgram(shaderProgram); // Activate your shader program
-        glBindVertexArray(VAO);      // Bind the VAO
-        glDrawArrays(GL_TRIANGLES, 0, 3); // Draw the triangle
-
-        // 9. Swap buffers
-        SDL_GL_SwapWindow(window);
-    }
-
-    // 10. Clean up resources
-    glDeleteVertexArrays(1, &VAO);
-    glDeleteBuffers(1, &VBO);
-    glDeleteProgram(shaderProgram);
-    SDL_GL_DeleteContext(gl_context);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
-
-
-    std::cout << "Minimal SDL2 + GLAD OpenGL test finished successfully." << std::endl;
-
-    return 0;
-}
-//////////////////////////////////
