@@ -21,6 +21,29 @@
 #define THREAD_COUNT 4
 */
 
+/*
+// --- CORE OPENGL LIBRARIES ---
+#include <glad/glad.h>   // MUST BE FIRST! This defines all gl* functions.
+#include <GLFW/glfw3.h>  // Second, as it uses GLAD's definitions for context creation.
+
+// --- OTHER LIBRARIES ---
+#include <glm/glm.hpp>   // Your math library
+#include <iostream>      // Standard C++
+#include <vector>
+#include <thread>
+#include <mutex>
+
+// THESE ARE THE PROBLEM CHILD HEADERS
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_opengl.h>
+
+#include "math.h"
+
+#define WINDOW_WIDTH 800
+#define WINDOW_HEIGHT 600
+#define THREAD_COUNT 4
+*/
+
 #include <glad/glad.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
@@ -30,169 +53,151 @@
 #include <mutex>
 #include <chrono>
 #include "math.h"
- 
-#define WINDOW_WIDTH 400
+#include <fstream>
+
+#define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
+#define THREAD_COUNT 4
 
 enum FractalType {
-    MANDELBROT, KOCH, SIERPINSKI_CARPET, CANTOR, DRAGON, PEANO, HILBERT,
-    SIERPINSKI_TRIANGLE, BOX, LEVY, GOSPER, CESARO, CANTOR_TERNARY,
-    KOCH_SNOWFLAKE, SIERPINSKI_ARROWHEAD, QUADRIC_KOCH, MINKOWSKI,
-    MOORE, SIERPINSKI_HEXAGON, CANTOR_MAZE, KOCH_ANTI_SNOWFLAKE, PEANO_MEANDER,
-    TERDRAGON, VICSEK, KOCH_ISLAND, HEXAFLAKE, HEIGHWAY_DRAGON, SNOWFLAKE_SWEEP,
-    CANTOR_SQUARE, HILBERT_VARIANT, SIERPINSKI_PENTAGON, DEKKING, GOSPER_ISLAND,
-    SIERPINSKI_SQUARE, KOCH_QUADRATIC, CANTOR_CLOUD
+	MANDELBROT, KOCH, SIERPINSKI_CARPET, CANTOR, DRAGON, PEANO, HILBERT,
+	SIERPINSKI_TRIANGLE, BOX, LEVY, GOSPER, CESARO, CANTOR_TERNARY,
+	KOCH_SNOWFLAKE, SIERPINSKI_ARROWHEAD, QUADRIC_KOCH, MINKOWSKI,
+	MOORE, SIERPINSKI_HEXAGON, CANTOR_MAZE, KOCH_ANTI_SNOWFLAKE, PEANO_MEANDER,
+	TERDRAGON, VICSEK, KOCH_ISLAND, HEXAFLAKE, HEIGHWAY_DRAGON, SNOWFLAKE_SWEEP,
+	CANTOR_SQUARE, HILBERT_VARIANT, SIERPINSKI_PENTAGON, DEKKING, GOSPER_ISLAND,
+	SIERPINSKI_SQUARE, KOCH_QUADRATIC, CANTOR_CLOUD
 };
 
 struct Viewport {
-    double x_min = -2.0, x_max = 1.0;
-    double y_min = -1.5, y_max = 1.5;
-    double zoom = 1.0;
+	double x_min = -2.0, x_max = 1.0;
+	double y_min = -1.5, y_max = 1.5;
+	double zoom = 1.0;
 };
 
 std::vector<std::vector<float>> pixel_data(WINDOW_HEIGHT, std::vector<float>(WINDOW_WIDTH, 0.0f));
 FractalType current_fractal = MANDELBROT;
+std::mutex mtx;
 
 void check_gl_error(const char* stage) {
-    GLenum err = glGetError();
-    if (err != GL_NO_ERROR) {
-        std::cerr << "OpenGL Error at " << stage << ": " << err << std::endl << std::flush;
-    }
+	GLenum err = glGetError();
+	if (err != GL_NO_ERROR) {
+		std::cerr << "OpenGL Error at " << stage << ": " << err << std::endl;
+	}
 }
 
-void compute_fractal(int start_y, int end_y, Viewport& view, FractalType type) {
-    std::cerr << "Computing fractal: " << type << " from y=" << start_y << " to " << end_y << std::endl << std::flush;
-    if (type == MANDELBROT) {
-        for (int y = start_y; y < end_y; ++y) {
-            for (int x = 0; x < WINDOW_WIDTH; ++x) {
-                double real = view.x_min + (view.x_max - view.x_min) * x / WINDOW_WIDTH;
-                double imag = view.y_min + (view.y_max - view.y_min) * y / WINDOW_HEIGHT;
-                pixel_data[y][x] = mandelbrot(real, imag);
-            }
-        }
-    }
+void compute_fractal(Viewport& view, FractalType type) {
+	// This is now handled by the shader
 }
 
 GLuint compile_shader(const char* source, GLenum type) {
-    std::cerr << "Compiling shader type " << type << std::endl << std::flush;
-    GLuint shader = glCreateShader(type);
-    glShaderSource(shader, 1, &source, nullptr);
-    glCompileShader(shader);
-    GLint success;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-    if (!success) {
-        char infoLog[512];
-        glGetShaderInfoLog(shader, 512, nullptr, infoLog);
-        std::cerr << "Shader compilation failed: " << infoLog << std::endl << std::flush;
-    }
-    check_gl_error("compile_shader");
-    return shader;
+	GLuint shader = glCreateShader(type);
+	glShaderSource(shader, 1, &source, nullptr);
+	glCompileShader(shader);
+	GLint success;
+	glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+	if (!success) {
+		char infoLog[512];
+		glGetShaderInfoLog(shader, 512, nullptr, infoLog);
+		std::cerr << "Shader compilation failed: " << infoLog << std::endl;
+	}
+	return shader;
 }
 
 GLuint create_shader_program(const char* vertex_source, const char* fragment_source) {
-    std::cerr << "Creating shader program" << std::endl << std::flush;
-    GLuint vertex_shader = compile_shader(vertex_source, GL_VERTEX_SHADER);
-    GLuint fragment_shader = compile_shader(fragment_source, GL_FRAGMENT_SHADER);
-    GLuint program = glCreateProgram();
-    glAttachShader(program, vertex_shader);
-    glAttachShader(program, fragment_shader);
-    glLinkProgram(program);
-    GLint success;
-    glGetProgramiv(program, GL_LINK_STATUS, &success);
-    if (!success) {
-        char infoLog[512];
-        glGetProgramInfoLog(program, 512, nullptr, infoLog);
-        std::cerr << "Program linking failed: " << infoLog << std::endl << std::flush;
-    }
-    glDeleteShader(vertex_shader);
-    glDeleteShader(fragment_shader);
-    check_gl_error("create_shader_program");
-    return program;
+	GLuint vertex_shader = compile_shader(vertex_source, GL_VERTEX_SHADER);
+	GLuint fragment_shader = compile_shader(fragment_source, GL_FRAGMENT_SHADER);
+	GLuint program = glCreateProgram();
+	glAttachShader(program, vertex_shader);
+	glAttachShader(program, fragment_shader);
+	glLinkProgram(program);
+	GLint success;
+	glGetProgramiv(program, GL_LINK_STATUS, &success);
+	if (!success) {
+		char infoLog[512];
+		glGetProgramInfoLog(program, 512, nullptr, infoLog);
+		std::cerr << "Program linking failed: " << infoLog << std::endl;
+	}
+	glDeleteShader(vertex_shader);
+	glDeleteShader(fragment_shader);
+	return program;
 }
 
 void render_line_fractal(GLuint shader_program, Viewport& view, FractalType type, GLuint vao, GLuint vbo) {
-    std::cerr << "Rendering line fractal: " << type << std::endl << std::flush;
-    std::vector<std::complex<double>> points;
-    if (type == KOCH) points = generate_koch_curve(4);
+	std::vector<std::complex<double>> points;
+	if (type == KOCH) points = generate_koch_curve(4);
 
-    std::vector<float> vertices;
-    for (const auto& p : points) {
-        float x = static_cast<float>((p.real() - view.x_min) / (view.x_max - view.x_min) * 2.0 - 1.0);
-        float y = static_cast<float>((p.imag() - view.y_min) / (view.y_max - view.y_min) * 2.0 - 1.0);
-        vertices.push_back(x);
-        vertices.push_back(y);
-    }
+	std::vector<float> vertices;
+	for (const auto& p : points) {
+		float x = static_cast<float>((p.real() - view.x_min) / (view.x_max - view.x_min) * 2.0 - 1.0);
+		float y = static_cast<float>((p.imag() - view.y_min) / (view.y_max - view.y_min) * 2.0 - 1.0);
+		vertices.push_back(x);
+		vertices.push_back(y);
+	}
 
-    glBindVertexArray(vao);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
+	glBindVertexArray(vao);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+	glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+	glEnableVertexAttribArray(0);
 
-    glClear(GL_COLOR_BUFFER_BIT);
-    glUseProgram(shader_program);
-    glUniform1i(glGetUniformLocation(shader_program, "useTexture"), 0);
-    glDrawArrays(GL_LINE_STRIP, 0, vertices.size() / 2);
-    glBindVertexArray(0);
-    check_gl_error("render_line_fractal");
+	glClear(GL_COLOR_BUFFER_BIT);
+	glUseProgram(shader_program);
+	glUniform1i(glGetUniformLocation(shader_program, "useTexture"), 0);
+	glDrawArrays(GL_LINE_STRIP, 0, vertices.size() / 2);
+	glBindVertexArray(0);
 }
 
 int main(int argc, char* argv[]) {
-    std::cerr << "Starting program" << std::endl << std::flush;
+	if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+		std::cerr << "SDL could not initialize! SDL_Error: " << SDL_GetError() << std::endl;
+		return 1;
+	}
+	SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
 
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-        std::cerr << "SDL could not initialize! SDL_Error: " << SDL_GetError() << std::endl << std::flush;
-        return 1;
-    }
-    std::cerr << "SDL initialized" << std::endl << std::flush;
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+	SDL_Window* window = SDL_CreateWindow(
+		"Fractal Art",
+		SDL_WINDOWPOS_UNDEFINED,
+		SDL_WINDOWPOS_UNDEFINED,
+		WINDOW_WIDTH,
+		WINDOW_HEIGHT,
+		SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN
+	);
+	if (!window) {
+		std::cerr << "Window could not be created! SDL_Error: " << SDL_GetError() << std::endl;
+		SDL_Quit();
+		return 1;
+	}
 
-    SDL_Window* window = SDL_CreateWindow(
-        "Fractal Art",
-        SDL_WINDOWPOS_UNDEFINED,
-        SDL_WINDOWPOS_UNDEFINED,
-        WINDOW_WIDTH,
-        WINDOW_HEIGHT,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN
-    );
-    if (!window) {
-        std::cerr << "Window could not be created! SDL_Error: " << SDL_GetError() << std::endl << std::flush;
-        SDL_Quit();
-        return 1;
-    }
-    std::cerr << "Window created" << std::endl << std::flush;
+	SDL_GLContext context = SDL_GL_CreateContext(window);
+	if (!context) {
+		std::cerr << "OpenGL context could not be created! SDL_Error: " << SDL_GetError() << std::endl;
+		SDL_DestroyWindow(window);
+		SDL_Quit();
+		return 1;
+	}
 
-    SDL_GLContext context = SDL_GL_CreateContext(window);
-    if (!context) {
-        std::cerr << "OpenGL context could not be created! SDL_Error: " << SDL_GetError() << std::endl << std::flush;
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return 1;
-    }
-    std::cerr << "OpenGL context created" << std::endl << std::flush;
+	if (!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress)) {
+		std::cerr << "Failed to initialize GLAD" << std::endl;
+		SDL_GL_DeleteContext(context);
+		SDL_DestroyWindow(window);
+		SDL_Quit();
+		return 1;
+	}
 
-    if (!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress)) {
-        std::cerr << "Failed to initialize GLAD" << std::endl << std::flush;
-        SDL_GL_DeleteContext(context);
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return 1;
-    }
-    std::cerr << "GLAD initialized" << std::endl << std::flush;
+	std::cout << "OpenGL Version: " << glGetString(GL_VERSION) << std::endl;
+	std::cout << "OpenGL Vendor: " << glGetString(GL_VENDOR) << std::endl;
 
-    std::cerr << "OpenGL Version: " << (glGetString(GL_VERSION) ? (const char*)glGetString(GL_VERSION) : "unknown") << std::endl;
-    std::cerr << "OpenGL Vendor: " << (glGetString(GL_VENDOR) ? (const char*)glGetString(GL_VENDOR) : "unknown") << std::endl << std::flush;
-    check_gl_error("GLAD initialization");
+	glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+	check_gl_error("viewport setup");
 
-    glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
-    check_gl_error("viewport setup");
-
-    const char* vertex_shader_source = R"(
+	const char* vertex_shader_source = R"(
         #version 330 core
         layout(location = 0) in vec2 position;
         out vec2 fragCoord;
@@ -201,137 +206,247 @@ int main(int argc, char* argv[]) {
             fragCoord = position * 0.5 + 0.5;
         }
     )";
-    const char* fragment_shader_source = R"(
-        #version 330 core
-        in vec2 fragCoord;
-        out vec4 fragColor;
-        uniform sampler2D pixelTexture;
-        uniform float maxIter;
-        uniform int useTexture;
-        void main() {
-            if (useTexture == 1) {
-                float value = texture(pixelTexture, fragCoord).r;
-                float smoothValue = value / maxIter;
-                vec3 color = vec3(smoothValue, sin(smoothValue * 6.28), cos(smoothValue * 6.28));
-                fragColor = vec4(color, 1.0);
-            } else {
-                fragColor = vec4(1.0, 0.0, 0.0, 1.0); // Red for lines
+	const char* fragment_shader_source = R"(
+    #version 330 core
+    in vec2 fragCoord;
+    out vec4 fragColor;
+    uniform float maxIter;
+    uniform int useTexture;
+    uniform vec2 view_min;
+    uniform vec2 view_max;
+    uniform vec3 color;
+
+    float mandelbrot(vec2 c) {
+        vec2 z = vec2(0.0, 0.0);
+        for (int i = 0; i < int(maxIter); i++) {
+            z = vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;
+            if (dot(z, z) > 4.0) {
+                return float(i) / maxIter;
             }
         }
-    )";
-    GLuint shader_program = create_shader_program(vertex_shader_source, fragment_shader_source);
-    std::cerr << "Shader Program ID: " << shader_program << std::endl << std::flush;
-
-    float quad_vertices[] = {
-        -1.0f, -1.0f, 1.0f, -1.0f, 1.0f, 1.0f,
-        -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f
-    };
-    GLuint quad_vao, quad_vbo;
-    glGenVertexArrays(1, &quad_vao);
-    glGenBuffers(1, &quad_vbo);
-    glBindVertexArray(quad_vao);
-    glBindBuffer(GL_ARRAY_BUFFER, quad_vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(quad_vertices), quad_vertices, GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-    check_gl_error("quad setup");
-
-    GLuint texture;
-    glGenTextures(1, &texture);
-    glBindTexture(GL_TEXTURE_2D, texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, WINDOW_WIDTH, WINDOW_HEIGHT, 0, GL_RED, GL_FLOAT, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    check_gl_error("texture setup");
-
-    GLuint line_vao, line_vbo;
-    glGenVertexArrays(1, &line_vao);
-    glGenBuffers(1, &line_vbo);
-    check_gl_error("line buffer setup");
-
-    Viewport view;
-    bool running = true;
-    SDL_Event event;
-    bool dragging = false;
-    int mouse_x, mouse_y;
-
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-
-    while (running) {
-        std::cerr << "Main loop iteration" << std::endl << std::flush;
-
-        while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_QUIT) running = false;
-            if (event.type == SDL_KEYDOWN) {
-                switch (event.key.keysym.sym) {
-                case SDLK_1: current_fractal = MANDELBROT; view = { -2.0, 1.0, -1.5, 1.5, 1.0 }; break;
-                case SDLK_2: current_fractal = KOCH; view = { 0.0, 1.0, -0.5, 0.5, 1.0 }; break;
-                }
-            }
-            if (event.type == SDL_MOUSEWHEEL) {
-                double zoom_factor = event.wheel.y > 0 ? 0.9 : 1.1;
-                double mx = view.x_min + (view.x_max - view.x_min) * (event.wheel.x / (double)WINDOW_WIDTH);
-                double my = view.y_min + (view.y_max - view.y_min) * (event.wheel.y / (double)WINDOW_HEIGHT);
-                view.x_min = mx + (view.x_min - mx) * zoom_factor;
-                view.x_max = mx + (view.x_max - mx) * zoom_factor;
-                view.y_min = my + (view.y_min - my) * zoom_factor;
-                view.y_max = my + (view.y_max - my) * zoom_factor;
-                view.zoom *= zoom_factor;
-            }
-            if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
-                dragging = true;
-                mouse_x = event.button.x;
-                mouse_y = event.button.y;
-            }
-            if (event.type == SDL_MOUSEBUTTONUP && event.button.button == SDL_BUTTON_LEFT) {
-                dragging = false;
-            }
-            if (event.type == SDL_MOUSEMOTION && dragging) {
-                double dx = (view.x_max - view.x_min) * (mouse_x - event.motion.x) / WINDOW_WIDTH;
-                double dy = (view.y_max - view.y_min) * (event.motion.y - mouse_y) / WINDOW_HEIGHT;
-                view.x_min += dx;
-                view.x_max += dx;
-                view.y_min += dy;
-                view.y_max += dy;
-                mouse_x = event.motion.x;
-                mouse_y = event.motion.y;
-            }
-        }
-
-        if (current_fractal == MANDELBROT) {
-            compute_fractal(0, WINDOW_HEIGHT, view, current_fractal);
-            glBindTexture(GL_TEXTURE_2D, texture);
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, GL_RED, GL_FLOAT, pixel_data[0].data());
-            check_gl_error("texture update");
-
-            glClear(GL_COLOR_BUFFER_BIT);
-            glUseProgram(shader_program);
-            glUniform1i(glGetUniformLocation(shader_program, "useTexture"), 1);
-            glUniform1f(glGetUniformLocation(shader_program, "maxIter"), 100.0f);
-            glBindVertexArray(quad_vao);
-            glDrawArrays(GL_TRIANGLES, 0, 6);
-            check_gl_error("pixel fractal render");
-        }
-        else {
-            render_line_fractal(shader_program, view, current_fractal, line_vao, line_vbo);
-        }
-
-        SDL_GL_SwapWindow(window);
-        std::cerr << "Swapped window" << std::endl << std::flush;
+        return 1.0;
     }
 
-    glDeleteTextures(1, &texture);
-    glDeleteVertexArrays(1, &quad_vao);
-    glDeleteBuffers(1, &quad_vbo);
-    glDeleteVertexArrays(1, &line_vao);
-    glDeleteBuffers(1, &line_vbo);
-    glDeleteProgram(shader_program);
-    SDL_GL_DeleteContext(context);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
-    std::cerr << "Program exited" << std::endl << std::flush;
-    return 0;
+    void main() {
+        if (useTexture == 1) {
+            vec2 c = view_min + fragCoord * (view_max - view_min);
+            float value = mandelbrot(c);
+            fragColor = vec4(color * value, 1.0);
+        } else {
+            fragColor = vec4(1.0, 0.0, 0.0, 1.0); // Red for lines
+        }
+    }
+)";
+
+	GLuint shader_program = create_shader_program(vertex_shader_source, fragment_shader_source);
+
+	float quad_vertices[] = {
+		-1.0f, -1.0f, 1.0f, -1.0f, 1.0f, 1.0f,
+		-1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f
+	};
+	GLuint quad_vao, quad_vbo;
+	glGenVertexArrays(1, &quad_vao);
+	glGenBuffers(1, &quad_vbo);
+	glBindVertexArray(quad_vao);
+	glBindBuffer(GL_ARRAY_BUFFER, quad_vbo);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(quad_vertices), quad_vertices, GL_STATIC_DRAW);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+	glEnableVertexAttribArray(0);
+	check_gl_error("quad setup");
+
+	GLuint texture;
+	glGenTextures(1, &texture);
+	glBindTexture(GL_TEXTURE_2D, texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, WINDOW_WIDTH, WINDOW_HEIGHT, 0, GL_RED, GL_FLOAT, nullptr);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	check_gl_error("texture setup");
+
+	GLuint line_vao, line_vbo;
+	glGenVertexArrays(1, &line_vao);
+	glGenBuffers(1, &line_vbo);
+	check_gl_error("line buffer setup");
+
+	Viewport view;
+	bool running = true;
+	SDL_Event event;
+	bool dragging = false;
+	int mouse_x, mouse_y;
+	int iterations = 100;
+	float color[3] = { 1.0f, 1.0f, 1.0f };
+
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+
+	while (running) {
+		while (SDL_PollEvent(&event)) {
+			if (event.type == SDL_QUIT) running = false;
+			if (event.type == SDL_KEYDOWN) {
+				switch (event.key.keysym.sym) {
+				case SDLK_1: current_fractal = MANDELBROT; view = { -2.0, 1.0, -1.5, 1.5, 1.0 }; break;
+				case SDLK_2: current_fractal = KOCH; view = { 0.0, 1.0, -0.5, 0.5, 1.0 }; break;
+				case SDLK_3: current_fractal = SIERPINSKI_CARPET; view = { 0.0, 1.0, 0.0, 1.0, 1.0 }; break;
+				case SDLK_4: current_fractal = CANTOR; view = { 0.0, 1.0, 0.0, 1.0, 1.0 }; break;
+				case SDLK_5: current_fractal = DRAGON; view = { -1.0, 1.0, -1.0, 1.0, 1.0 }; break;
+				case SDLK_6: current_fractal = PEANO; view = { 0.0, 1.0, 0.0, 1.0, 1.0 }; break;
+				case SDLK_7: current_fractal = HILBERT; view = { 0.0, 1.0, 0.0, 1.0, 1.0 }; break;
+				case SDLK_8: current_fractal = SIERPINSKI_TRIANGLE; view = { 0.0, 1.0, 0.0, 1.0, 1.0 }; break;
+				case SDLK_9: current_fractal = BOX; view = { 0.0, 1.0, 0.0, 1.0, 1.0 }; break;
+				case SDLK_0: current_fractal = LEVY; view = { 0.0, 1.0, 0.0, 1.0, 1.0 }; break;
+				case SDLK_UP: iterations += 10; break;
+				case SDLK_DOWN: iterations -= 10; break;
+				case SDLK_r: color[0] += 0.1f; break;
+				case SDLK_g: color[1] += 0.1f; break;
+				case SDLK_b: color[2] += 0.1f; break;
+				case SDLK_SPACE: view = { -2.0, 1.0, -1.5, 1.5, 1.0 }; iterations = 100; color[0] = 1.0f; color[1] = 1.0f; color[2] = 1.0f; break;
+				case SDLK_h: std::cout << "Commands:" << std::endl;
+					std::cout << "1-9: Change fractal" << std::endl;
+					std::cout << "Up/Down: Change iterations" << std::endl;
+					std::cout << "r/g/b: Change color" << std::endl;
+					std::cout << "Space: Reset" << std::endl;
+					std::cout << "h: Help" << std::endl;
+					std::cout << "q: Quit" << std::endl;
+					break;
+				case SDLK_s: {
+					std::vector<unsigned char> data(WINDOW_WIDTH * WINDOW_HEIGHT * 3);
+					glReadPixels(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, GL_RGB, GL_UNSIGNED_BYTE, data.data());
+					std::ofstream file("fractal.ppm", std::ios::out | std::ios::binary);
+					file << "P6\n" << WINDOW_WIDTH << " " << WINDOW_HEIGHT << "\n255\n";
+					file.write((char*)data.data(), data.size());
+					file.close();
+					std::cout << "Saved to fractal.ppm" << std::endl;
+					break;
+				}
+				case SDLK_l: {
+					std::ifstream file("fractal.ppm", std::ios::in | std::ios::binary);
+					if (file.is_open()) {
+						std::string line;
+						std::getline(file, line);
+						std::getline(file, line);
+						std::getline(file, line);
+						std::vector<unsigned char> data(WINDOW_WIDTH * WINDOW_HEIGHT * 3);
+						file.read((char*)data.data(), data.size());
+						file.close();
+						glBindTexture(GL_TEXTURE_2D, texture);
+						glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, GL_RGB, GL_UNSIGNED_BYTE, data.data());
+						std::cout << "Loaded from fractal.ppm" << std::endl;
+					}
+					else {
+						std::cout << "Could not open fractal.ppm" << std::endl;
+					}
+					break;
+				}
+				case SDLK_f: {
+					Uint32 fullscreen_flag = SDL_WINDOW_FULLSCREEN;
+					bool is_fullscreen = SDL_GetWindowFlags(window) & fullscreen_flag;
+					SDL_SetWindowFullscreen(window, is_fullscreen ? 0 : fullscreen_flag);
+					break;
+				}
+				case SDLK_p: {
+					std::vector<unsigned char> data(WINDOW_WIDTH * WINDOW_HEIGHT * 3);
+					glReadPixels(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, GL_RGB, GL_UNSIGNED_BYTE, data.data());
+					std::ofstream file("screenshot.ppm", std::ios::out | std::ios::binary);
+					file << "P6\n" << WINDOW_WIDTH << " " << WINDOW_HEIGHT << "\n255\n";
+					file.write((char*)data.data(), data.size());
+					file.close();
+					std::cout << "Saved to screenshot.ppm" << std::endl;
+					break;
+				}
+				case SDLK_o: {
+					auto start = std::chrono::high_resolution_clock::now();
+					compute_fractal(view, current_fractal);
+					auto end = std::chrono::high_resolution_clock::now();
+					std::cout << "Time to compute fractal: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms" << std::endl;
+					break;
+				}
+				case SDLK_d: {
+					std::cout << "Viewport: " << view.x_min << ", " << view.y_min << " -> " << view.x_max << ", " << view.y_max << std::endl;
+					std::cout << "Iterations: " << iterations << std::endl;
+					std::cout << "Color: " << color[0] << ", " << color[1] << ", " << color[2] << std::endl;
+					break;
+				}
+				case SDLK_v: {
+					std::cout << "Fractal Art v1.0" << std::endl;
+					break;
+				}
+				case SDLK_c: {
+					std::cout << "This program is licensed under the MIT License." << std::endl;
+					break;
+				}
+				case SDLK_x: {
+					std::cout << "Credits:" << std::endl;
+					std::cout << "Created by: Me" << std::endl;
+					break;
+				}
+				}
+			}
+			if (event.type == SDL_MOUSEWHEEL) {
+				double zoom_factor = event.wheel.y > 0 ? 0.9 : 1.1;
+				double mx = view.x_min + (view.x_max - view.x_min) * (event.wheel.x / (double)WINDOW_WIDTH);
+				double my = view.y_min + (view.y_max - view.y_min) * (event.wheel.y / (double)WINDOW_HEIGHT);
+				view.x_min = mx + (view.x_min - mx) * zoom_factor;
+				view.x_max = mx + (view.x_max - mx) * zoom_factor;
+				view.y_min = my + (view.y_min - my) * zoom_factor;
+				view.y_max = my + (view.y_max - my) * zoom_factor;
+				view.zoom *= zoom_factor;
+			}
+			if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT) {
+				dragging = true;
+				mouse_x = event.button.x;
+				mouse_y = event.button.y;
+			}
+			if (event.type == SDL_MOUSEBUTTONUP && event.button.button == SDL_BUTTON_LEFT) {
+				dragging = false;
+			}
+			if (event.type == SDL_MOUSEMOTION && dragging) {
+				double dx = (view.x_max - view.x_min) * (mouse_x - event.motion.x) / WINDOW_WIDTH;
+				double dy = (view.y_max - view.y_min) * (event.motion.y - mouse_y) / WINDOW_HEIGHT;
+				view.x_min += dx;
+				view.x_max += dx;
+				view.y_min += dy;
+				view.y_max += dy;
+				mouse_x = event.motion.x;
+				mouse_y = event.motion.y;
+			}
+		}
+
+		if (current_fractal == MANDELBROT) {
+			glClear(GL_COLOR_BUFFER_BIT);
+			glUseProgram(shader_program);
+			glUniform1i(glGetUniformLocation(shader_program, "useTexture"), 1);
+			glUniform1f(glGetUniformLocation(shader_program, "maxIter"), iterations);
+
+			glUniform2f(glGetUniformLocation(shader_program, "view_min"), (float)view.x_min, (float)view.y_min);
+			glUniform2f(glGetUniformLocation(shader_program, "view_max"), (float)view.x_max, (float)view.y_max);
+
+			glUniform3fv(glGetUniformLocation(shader_program, "color"), 1, color);
+			glBindVertexArray(quad_vao);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+			check_gl_error("pixel fractal render");
+		}
+		else {
+			render_line_fractal(shader_program, view, current_fractal, line_vao, line_vbo);
+		}
+
+		SDL_GL_SwapWindow(window);
+	}
+
+	glDeleteTextures(1, &texture);
+	glDeleteVertexArrays(1, &quad_vao);
+	glDeleteBuffers(1, &quad_vbo);
+	glDeleteVertexArrays(1, &line_vao);
+	glDeleteBuffers(1, &line_vbo);
+	glDeleteProgram(shader_program);
+	SDL_GL_DeleteContext(context);
+	SDL_DestroyWindow(window);
+	SDL_Quit();
+	return 0;
 }
+
+
+
+
+
+
 /// /////////////////////////////////////
 
 
