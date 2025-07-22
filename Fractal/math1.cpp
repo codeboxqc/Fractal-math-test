@@ -210,7 +210,7 @@ std::vector<std::complex<double>> generate_gosper_curve(int iterations) {
 
 std::vector<std::complex<double>> generate_cesaro_curve(int iterations) {
     std::vector<std::complex<double>> points = { {0.0, 0.0}, {1.0, 0.0} };
-    double angle = M_PI * 85.0 / 180.0; // 85-degree angle as per Ces√†ro curve
+    double angle = M_PI * 85.0 / 180.0; // 85-degree angle as per Ces‡ro curve
     for (int i = 0; i < iterations; ++i) {
         std::vector<std::complex<double>> new_points;
         double scale = 1.0 / (2.0 * std::cos(angle / 2.0));

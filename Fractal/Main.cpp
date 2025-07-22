@@ -55,8 +55,8 @@
 #include "math.h"
 #include <fstream>
 
-#define WINDOW_WIDTH 800
-#define WINDOW_HEIGHT 600
+#define WINDOW_WIDTH 1920
+#define WINDOW_HEIGHT 1080
 #define THREAD_COUNT 4
 
 enum FractalType {
@@ -79,6 +79,8 @@ std::vector<std::vector<float>> pixel_data(WINDOW_HEIGHT, std::vector<float>(WIN
 FractalType current_fractal = MANDELBROT;
 std::mutex mtx;
 
+GLuint texture = 0;
+
 void check_gl_error(const char* stage) {
 	GLenum err = glGetError();
 	if (err != GL_NO_ERROR) {
@@ -87,7 +89,63 @@ void check_gl_error(const char* stage) {
 }
 
 void compute_fractal(Viewport& view, FractalType type) {
-	// This is now handled by the shader
+	std::vector<std::thread> threads;
+	int rows_per_thread = WINDOW_HEIGHT / THREAD_COUNT;
+
+	for (int t = 0; t < THREAD_COUNT; ++t) {
+		threads.emplace_back([&, t]() {
+			int start_row = t * rows_per_thread;
+			int end_row = (t == THREAD_COUNT - 1) ? WINDOW_HEIGHT : start_row + rows_per_thread;
+
+			for (int y = start_row; y < end_row; ++y) {
+				for (int x = 0; x < WINDOW_WIDTH; ++x) {
+					double real = view.x_min + (view.x_max - view.x_min) * x / WINDOW_WIDTH;
+					double imag = view.y_min + (view.y_max - view.y_min) * y / WINDOW_HEIGHT;
+					float value = 0.0f;
+					int iterations = 4;
+
+					switch (type) {
+					case SIERPINSKI_CARPET: value = sierpinski_carpet(real, imag, iterations); break;
+					case CANTOR: value = cantor_dust(real, imag, iterations); break;
+					case PEANO: value = peano_curve(real, imag, iterations); break;
+					case HILBERT: value = hilbert_curve(real, imag, iterations); break;
+					case SIERPINSKI_TRIANGLE: value = sierpinski_triangle(real, imag, iterations); break;
+					case BOX: value = box_fractal(real, imag, iterations); break;
+					case CANTOR_TERNARY: value = cantor_ternary_grid(real, imag, iterations); break;
+					case SIERPINSKI_HEXAGON: value = sierpinski_hexagon(real, imag, iterations); break;
+					case CANTOR_MAZE: value = cantor_maze(real, imag, iterations); break;
+					case PEANO_MEANDER: value = peano_meander_curve(real, imag, iterations); break;
+					case VICSEK: value = vicsek_fractal(real, imag, iterations); break;
+					case HEXAFLAKE: value = hexaflake(real, imag, iterations); break;
+					case CANTOR_SQUARE: value = cantor_square(real, imag, iterations); break;
+					case HILBERT_VARIANT: value = hilbert_variant(real, imag, iterations); break;
+					case SIERPINSKI_PENTAGON: value = sierpinski_pentagon(real, imag, iterations); break;
+					case CANTOR_CLOUD: value = cantor_cloud(real, imag, iterations); break;
+					case MOORE: value = moore_curve(real, imag, iterations); break;
+					case SIERPINSKI_SQUARE: value = sierpinski_square(real, imag, iterations); break;
+					default: value = 0.0f; break;
+					}
+
+					// Debug: Log if value is out of range
+					if (value < 0.0f || value > 1.0f) {
+						std::lock_guard<std::mutex> lock(mtx);
+						std::cerr << "Invalid value for fractal " << type << " at (" << real << ", " << imag << "): " << value << std::endl;
+					}
+
+					std::lock_guard<std::mutex> lock(mtx);
+					pixel_data[y][x] = value;
+				}
+			}
+			});
+	}
+
+	for (auto& thread : threads) {
+		thread.join();
+	}
+
+	glBindTexture(GL_TEXTURE_2D, texture);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, GL_RED, GL_FLOAT, pixel_data[0].data());
+	check_gl_error("texture upload");
 }
 
 GLuint compile_shader(const char* source, GLenum type) {
@@ -123,7 +181,58 @@ GLuint create_shader_program(const char* vertex_source, const char* fragment_sou
 	return program;
 }
 
+
 void render_line_fractal(GLuint shader_program, Viewport& view, FractalType type, GLuint vao, GLuint vbo) {
+	std::vector<std::complex<double>> points;
+	int iterations = 4; // Adjustable iterations
+
+	switch (type) {
+	case KOCH: points = generate_koch_curve(iterations); break;
+	case DRAGON: points = generate_dragon_curve(iterations); break;
+	case LEVY: points = generate_levy_curve(iterations); break;
+	case GOSPER: points = generate_gosper_curve(iterations); break;
+	case CESARO: points = generate_cesaro_curve(iterations); break;
+	case KOCH_SNOWFLAKE: points = generate_koch_snowflake(iterations); break;
+	case SIERPINSKI_ARROWHEAD: points = generate_sierpinski_arrowhead(iterations); break;
+	case QUADRIC_KOCH: points = generate_quadric_koch(iterations); break;
+	case MINKOWSKI: points = generate_minkowski_sausage(iterations); break;
+	case TERDRAGON: points = generate_terdragon_curve(iterations); break;
+	case KOCH_ISLAND: points = generate_koch_island(iterations); break;
+	case HEIGHWAY_DRAGON: points = generate_heighway_dragon_variant(iterations); break;
+	case SNOWFLAKE_SWEEP: points = generate_snowflake_sweep(iterations); break;
+	case DEKKING: points = generate_dekking_curve(iterations); break;
+	case GOSPER_ISLAND: points = generate_gosper_island(iterations); break;
+	case KOCH_QUADRATIC: points = generate_koch_quadratic(iterations); break;
+	case KOCH_ANTI_SNOWFLAKE: points = generate_koch_anti_snowflake(iterations); break;
+	default:
+		std::cerr << "Unsupported fractal type for line rendering: " << type << std::endl;
+		return;
+	}
+
+	std::vector<float> vertices;
+	for (const auto& p : points) {
+		float x = static_cast<float>((p.real() - view.x_min) / (view.x_max - view.x_min) * 2.0 - 1.0);
+		float y = static_cast<float>((p.imag() - view.y_min) / (view.y_max - view.y_min) * 2.0 - 1.0);
+		vertices.push_back(x);
+		vertices.push_back(y);
+	}
+
+	glBindVertexArray(vao);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+	glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+	glEnableVertexAttribArray(0);
+
+	glClear(GL_COLOR_BUFFER_BIT);
+	glUseProgram(shader_program);
+	glUniform1i(glGetUniformLocation(shader_program, "useTexture"), 0);
+	glDrawArrays(GL_LINE_STRIP, 0, vertices.size() / 2);
+	glBindVertexArray(0);
+	check_gl_error("line fractal render");
+}
+
+
+void render_line_fractal2(GLuint shader_program, Viewport& view, FractalType type, GLuint vao, GLuint vbo) {
 	std::vector<std::complex<double>> points;
 	if (type == KOCH) points = generate_koch_curve(4);
 
@@ -281,7 +390,11 @@ int main(int argc, char* argv[]) {
 		while (SDL_PollEvent(&event)) {
 			if (event.type == SDL_QUIT) running = false;
 			if (event.type == SDL_KEYDOWN) {
+
+
 				switch (event.key.keysym.sym) {
+
+
 				case SDLK_1: current_fractal = MANDELBROT; view = { -2.0, 1.0, -1.5, 1.5, 1.0 }; break;
 				case SDLK_2: current_fractal = KOCH; view = { 0.0, 1.0, -0.5, 0.5, 1.0 }; break;
 				case SDLK_3: current_fractal = SIERPINSKI_CARPET; view = { 0.0, 1.0, 0.0, 1.0, 1.0 }; break;
@@ -291,14 +404,42 @@ int main(int argc, char* argv[]) {
 				case SDLK_7: current_fractal = HILBERT; view = { 0.0, 1.0, 0.0, 1.0, 1.0 }; break;
 				case SDLK_8: current_fractal = SIERPINSKI_TRIANGLE; view = { 0.0, 1.0, 0.0, 1.0, 1.0 }; break;
 				case SDLK_9: current_fractal = BOX; view = { 0.0, 1.0, 0.0, 1.0, 1.0 }; break;
-				case SDLK_0: current_fractal = LEVY; view = { 0.0, 1.0, 0.0, 1.0, 1.0 }; break;
-				case SDLK_UP: iterations += 10; break;
-				case SDLK_DOWN: iterations -= 10; break;
-				case SDLK_r: color[0] += 0.1f; break;
-				case SDLK_g: color[1] += 0.1f; break;
-				case SDLK_b: color[2] += 0.1f; break;
+				case SDLK_0: current_fractal = LEVY; view = { -1.0, 1.0, -1.0, 1.0, 1.0 }; break;
+				case SDLK_q: current_fractal = GOSPER; view = { -1.0, 1.0, -1.0, 1.0, 1.0 }; break;
+				case SDLK_w: current_fractal = CESARO; view = { -1.0, 1.0, -1.0, 1.0, 1.0 }; break;
+				case SDLK_e: current_fractal = KOCH_SNOWFLAKE; view = { -0.5, 1.5, -0.5, 1.0, 1.0 }; break;
+				case SDLK_r: current_fractal = SIERPINSKI_ARROWHEAD; view = { -0.5, 1.5, -0.5, 1.0, 1.0 }; break;
+				case SDLK_t: current_fractal = QUADRIC_KOCH; view = { -0.5, 1.5, -0.5, 1.5, 1.0 }; break;
+				case SDLK_y: current_fractal = MINKOWSKI; view = { -0.5, 1.5, -0.5, 1.0, 1.0 }; break;
+				case SDLK_u: current_fractal = MOORE; view = { 0.0, 1.0, 0.0, 1.0, 1.0 }; break;
+				case SDLK_i: current_fractal = SIERPINSKI_HEXAGON; view = { 0.0, 1.0, -0.5, 1.5, 1.0 }; break;
+				case SDLK_o: current_fractal = CANTOR_MAZE; view = { 0.0, 1.0, 0.0, 1.0, 1.0 }; break;
+				case SDLK_p: current_fractal = KOCH_ANTI_SNOWFLAKE; view = { -0.5, 1.5, -0.5, 1.0, 1.0 }; break;
+				case SDLK_a: current_fractal = PEANO_MEANDER; view = { 0.0, 1.0, 0.0, 1.0, 1.0 }; break;
+				case SDLK_s: current_fractal = TERDRAGON; view = { -1.0, 1.0, -1.0, 1.0, 1.0 }; break;
+				case SDLK_d: current_fractal = VICSEK; view = { 0.0, 1.0, 0.0, 1.0, 1.0 }; break;
+				case SDLK_f: current_fractal = KOCH_ISLAND; view = { -0.5, 1.5, -0.5, 1.5, 1.0 }; break;
+				case SDLK_g: current_fractal = HEXAFLAKE; view = { 0.0, 1.0, -0.5, 1.5, 1.0 }; break;
+				case SDLK_h: current_fractal = HEIGHWAY_DRAGON; view = { -1.0, 1.0, -1.0, 1.0, 1.0 }; break;
+				case SDLK_j: current_fractal = SNOWFLAKE_SWEEP; view = { -0.5, 1.5, -0.5, 1.5, 1.0 }; break;
+				case SDLK_k: current_fractal = CANTOR_SQUARE; view = { 0.0, 1.0, 0.0, 1.0, 1.0 }; break;
+				case SDLK_l: current_fractal = HILBERT_VARIANT; view = { 0.0, 1.0, 0.0, 1.0, 1.0 }; break;
+				case SDLK_z: current_fractal = SIERPINSKI_PENTAGON; view = { 0.0, 1.0, -0.5, 1.5, 1.0 }; break;
+				case SDLK_x: current_fractal = DEKKING; view = { -1.0, 1.0, -1.0, 1.0, 1.0 }; break;
+				case SDLK_c: current_fractal = GOSPER_ISLAND; view = { -0.5, 1.5, -0.5, 1.0, 1.0 }; break;
+				case SDLK_v: current_fractal = KOCH_QUADRATIC; view = { -0.5, 1.5, -0.5, 1.0, 1.0 }; break;
+				case SDLK_b: current_fractal = CANTOR_CLOUD; view = { 0.0, 1.0, 0.0, 1.0, 1.0 }; break;
+
+
+
+
+
+
 				case SDLK_SPACE: view = { -2.0, 1.0, -1.5, 1.5, 1.0 }; iterations = 100; color[0] = 1.0f; color[1] = 1.0f; color[2] = 1.0f; break;
-				case SDLK_h: std::cout << "Commands:" << std::endl;
+
+
+				 
+				case SDLK_EXCLAIM: std::cout << "Commands:" << std::endl;
 					std::cout << "1-9: Change fractal" << std::endl;
 					std::cout << "Up/Down: Change iterations" << std::endl;
 					std::cout << "r/g/b: Change color" << std::endl;
@@ -306,7 +447,7 @@ int main(int argc, char* argv[]) {
 					std::cout << "h: Help" << std::endl;
 					std::cout << "q: Quit" << std::endl;
 					break;
-				case SDLK_s: {
+				case SDLK_COLON: {
 					std::vector<unsigned char> data(WINDOW_WIDTH * WINDOW_HEIGHT * 3);
 					glReadPixels(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, GL_RGB, GL_UNSIGNED_BYTE, data.data());
 					std::ofstream file("fractal.ppm", std::ios::out | std::ios::binary);
@@ -316,7 +457,7 @@ int main(int argc, char* argv[]) {
 					std::cout << "Saved to fractal.ppm" << std::endl;
 					break;
 				}
-				case SDLK_l: {
+				case SDLK_QUOTEDBL: {
 					std::ifstream file("fractal.ppm", std::ios::in | std::ios::binary);
 					if (file.is_open()) {
 						std::string line;
@@ -333,15 +474,17 @@ int main(int argc, char* argv[]) {
 					else {
 						std::cout << "Could not open fractal.ppm" << std::endl;
 					}
+
+					
 					break;
 				}
-				case SDLK_f: {
+				case SDLK_PERCENT: {
 					Uint32 fullscreen_flag = SDL_WINDOW_FULLSCREEN;
 					bool is_fullscreen = SDL_GetWindowFlags(window) & fullscreen_flag;
 					SDL_SetWindowFullscreen(window, is_fullscreen ? 0 : fullscreen_flag);
 					break;
 				}
-				case SDLK_p: {
+				case SDLK_DOLLAR: {
 					std::vector<unsigned char> data(WINDOW_WIDTH * WINDOW_HEIGHT * 3);
 					glReadPixels(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, GL_RGB, GL_UNSIGNED_BYTE, data.data());
 					std::ofstream file("screenshot.ppm", std::ios::out | std::ios::binary);
@@ -351,33 +494,35 @@ int main(int argc, char* argv[]) {
 					std::cout << "Saved to screenshot.ppm" << std::endl;
 					break;
 				}
-				case SDLK_o: {
+				case SDLK_HASH: {
 					auto start = std::chrono::high_resolution_clock::now();
 					compute_fractal(view, current_fractal);
 					auto end = std::chrono::high_resolution_clock::now();
 					std::cout << "Time to compute fractal: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms" << std::endl;
 					break;
 				}
-				case SDLK_d: {
+				case SDLK_ASTERISK: {
 					std::cout << "Viewport: " << view.x_min << ", " << view.y_min << " -> " << view.x_max << ", " << view.y_max << std::endl;
 					std::cout << "Iterations: " << iterations << std::endl;
 					std::cout << "Color: " << color[0] << ", " << color[1] << ", " << color[2] << std::endl;
 					break;
 				}
-				case SDLK_v: {
+				case SDLK_PLUS: {
 					std::cout << "Fractal Art v1.0" << std::endl;
 					break;
 				}
-				case SDLK_c: {
+				case SDLK_COMMA: {
 					std::cout << "This program is licensed under the MIT License." << std::endl;
 					break;
 				}
-				case SDLK_x: {
+				case SDLK_SLASH: {
 					std::cout << "Credits:" << std::endl;
 					std::cout << "Created by: Me" << std::endl;
 					break;
 				}
+				 
 				}
+				
 			}
 			if (event.type == SDL_MOUSEWHEEL) {
 				double zoom_factor = event.wheel.y > 0 ? 0.9 : 1.1;
@@ -413,18 +558,46 @@ int main(int argc, char* argv[]) {
 			glClear(GL_COLOR_BUFFER_BIT);
 			glUseProgram(shader_program);
 			glUniform1i(glGetUniformLocation(shader_program, "useTexture"), 1);
+			glUniform1i(glGetUniformLocation(shader_program, "fractalType"), (int)current_fractal);
 			glUniform1f(glGetUniformLocation(shader_program, "maxIter"), iterations);
-
 			glUniform2f(glGetUniformLocation(shader_program, "view_min"), (float)view.x_min, (float)view.y_min);
 			glUniform2f(glGetUniformLocation(shader_program, "view_max"), (float)view.x_max, (float)view.y_max);
-
 			glUniform3fv(glGetUniformLocation(shader_program, "color"), 1, color);
 			glBindVertexArray(quad_vao);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
-			check_gl_error("pixel fractal render");
+			check_gl_error("mandelbrot render");
 		}
 		else {
-			render_line_fractal(shader_program, view, current_fractal, line_vao, line_vbo);
+			bool is_pixel_fractal = current_fractal == SIERPINSKI_CARPET || current_fractal == CANTOR ||
+				current_fractal == PEANO || current_fractal == HILBERT ||
+				current_fractal == SIERPINSKI_TRIANGLE || current_fractal == BOX ||
+				current_fractal == CANTOR_TERNARY || current_fractal == SIERPINSKI_HEXAGON ||
+				current_fractal == CANTOR_MAZE || current_fractal == PEANO_MEANDER ||
+				current_fractal == VICSEK || current_fractal == HEXAFLAKE ||
+				current_fractal == CANTOR_SQUARE || current_fractal == HILBERT_VARIANT ||
+				current_fractal == SIERPINSKI_PENTAGON || current_fractal == CANTOR_CLOUD ||
+				current_fractal == MOORE || current_fractal == SIERPINSKI_SQUARE;
+
+			if (is_pixel_fractal) {
+				compute_fractal(view, current_fractal);
+				glClear(GL_COLOR_BUFFER_BIT);
+				glUseProgram(shader_program);
+				glUniform1i(glGetUniformLocation(shader_program, "useTexture"), 1);
+				glUniform1i(glGetUniformLocation(shader_program, "fractalType"), (int)current_fractal);
+				glUniform1f(glGetUniformLocation(shader_program, "maxIter"), iterations);
+				glUniform2f(glGetUniformLocation(shader_program, "view_min"), (float)view.x_min, (float)view.y_min);
+				glUniform2f(glGetUniformLocation(shader_program, "view_max"), (float)view.x_max, (float)view.y_max);
+				glUniform3fv(glGetUniformLocation(shader_program, "color"), 1, color);
+				glActiveTexture(GL_TEXTURE0); // Ensure texture unit 0 is active
+				glBindTexture(GL_TEXTURE_2D, texture);
+				glUniform1i(glGetUniformLocation(shader_program, "textureSampler"), 0); // Bind texture to sampler
+				glBindVertexArray(quad_vao);
+				glDrawArrays(GL_TRIANGLES, 0, 6);
+				check_gl_error("pixel fractal render");
+			}
+			else {
+				render_line_fractal(shader_program, view, current_fractal, line_vao, line_vbo);
+			}
 		}
 
 		SDL_GL_SwapWindow(window);
@@ -470,6 +643,11 @@ const char* fragmentShaderSource = R"(
 
 
 int main1(int argc, char* argv[]) {
+
+
+	srand(time(nullptr));
+
+
     // 1. Initialize SDL Video Subsystem
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         std::cerr << "SDL could not initialize! SDL_Error: " << SDL_GetError() << std::endl;
