@@ -45,7 +45,7 @@ License
 This project is licensed under the MIT License. See LICENSE for details.
 
 Credits
-Created by [Your Name]
+ 
 Built with SDL2, OpenGL, and GLAD
 Installation Using vcpkg
 vcpkg is a C++ package manager that simplifies the installation of libraries like SDL2 and its dependencies. Below are step-by-step instructions to install all dependencies and build the project using vcpkg on Windows, Linux, or macOS.
@@ -65,10 +65,10 @@ cd vcpkg
 .\bootstrap-vcpkg.bat
 ./bootstrap-vcpkg.sh
 ./vcpkg integrate install
-./vcpkg install sdl2:x64-windows sdl2:x64-linux sdl2:x64-osx
+./vcpkg install sdl2:x64-windows  
 sudo apt-get install libgl1-mesa-dev
-git clone <your-repo-url>
-cd https://github.com/codeboxqc/Fractal-math-test.git
+git  https://github.com/codeboxqc/Fractal-math-test.git
+ 
 
 fractal-art/
 ├── Main.cpp
